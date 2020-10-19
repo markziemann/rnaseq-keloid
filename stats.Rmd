@@ -1,0 +1,657 @@
+---
+title: "Gene expression analysis of keloid tissue and cultured fibroblasts"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+theme: cosmo
+---
+
+Source codes: TODO
+
+## Background
+
+Here we are looking at the molecular hallmarks of Keloids in tissue samples and fibroblasts.
+
+Reads underwent quality trimming using Skewer version 0.2.2 (Jiang et al, 2014).
+I mapped the reads to the Gencode transcriptome version 35 using Kallisto version 0.46.1 (Bray et al, 2016).
+Expression counts were loaded into R and then DE analysis was performed with DESeq2 (Love et al, 2014).
+Enrichment analysis was performed using Reactome and MSigDB genesets (Jassal et al, 2020; Liberzon et al, 2015) with the Mitch package (Kaspi & Ziemann 2020).
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+    library("reshape2")
+    library("gplots")
+    library("DESeq2")
+    library("mitch")
+})
+
+```
+
+Here are some functions.
+
+```{r,defunc}
+
+run_de <- function(ss,xx){
+
+y <- round(xx)
+
+# MDS
+mds <- cmdscale(dist(t(y)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds , xlab="Coordinate 1", ylab="Coordinate 2",
+  type = "n" , xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(y) )
+
+# DE
+dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ trt)
+dds <- DESeq(dds)
+de <- DESeq2::results(dds)
+de <- de[order(de$pvalue),]
+up <- rownames(subset(de, log2FoldChange>0 & padj<0.05 ))
+dn <- rownames(subset(de, log2FoldChange<0 & padj<0.05 ))
+str(up)
+str(dn)
+
+# MA plot
+sig <-subset(de, padj < 0.05 )
+GENESUP <- length(up)
+GENESDN <- length(dn)
+SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down")
+ns <-subset(de, padj > 0.05 )
+plot(log2(de$baseMean),de$log2FoldChange,
+     xlab="log2 basemean", ylab="log2 foldchange",
+     pch=19, cex=0.5, col="dark gray",
+     main="smear plot")
+points(log2(sig$baseMean),sig$log2FoldChange,
+       pch=19, cex=0.5, col="red")
+mtext(SUBHEADER)
+
+# heatmap
+yn <- y/colSums(y)*1000000
+yf <- yn[which(rownames(yn) %in% rownames(de)[1:50]),]
+mycols <- gsub("0","yellow",ss$trt)
+mycols <- gsub("1","orange",mycols)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(  as.matrix(yf), col=colfunc(25),scale="row",
+    ColSideColors =mycols ,trace="none",
+    margin = c(10,10), cexRow=0.6, cexCol=0.8 , main="Top 50 genes by p-val")
+mtext("yellow=ctrl, orange=trt")
+
+return(de)
+}
+
+```
+
+
+## Load data
+
+Here we load the data in from the aligner.
+
+```{r,import}
+
+tmp <- read.table("3col.tsv.gz")
+x <- as.data.frame(acast(tmp, V2~V1, value.var="V3"))
+x$geneID <- sapply(strsplit(rownames(x),"\\|"),"[[",2)
+x$gene_name <- sapply(strsplit(rownames(x),"\\|"),"[[",6)
+x$gene <- paste(x$geneID,x$gene_name)
+x$geneID = x$gene_name = NULL
+xx <- aggregate(. ~ gene, x, sum)
+rownames(xx) <- xx$gene
+xx$gene = NULL
+head(xx)
+
+```
+
+```{r,numreads,fig.width=7,fig.height=7}
+
+par(mar=c(5,10,5,3))
+barplot(colSums(xx),horiz=TRUE,las=2,main="number of reads per sample",cex.names=0.5)
+
+
+```
+
+## Sample sheet
+
+The data were divided into two study arms: tissues and cells.
+Here are the contrasts for the tissues where group 1 is case and group 2 is control.
+
+        Group1          Group2          Check
+
+1       KP (35,45,46)   N (6,9,10)      missing KP45
+
+2       KM (35,45,46)   N (6,9,10)      OK
+
+3       KT (35,45,46)   N (6,9,10)      OK
+
+4       KN (35,45,46)   N (6,9,10)      OK
+
+5       D (1,3,4)       N (6,9,10)      OK
+
+K=keloid
+
+KP=keloid-peripheral
+
+KM=keloid-middle
+
+KT=keloid-transitional
+
+KN=keloid-normal 
+
+N=normal skin control
+
+I noticed that for group KP, there was only data 35 and 46 present but no 45.
+This sample will be included in subsequent analysis.
+
+Here are the contrasts for the cells:
+
+6       KDUP-Peri (35,45,46)    NBF (6,9,10)            OK
+
+7       KDUP-Mid (35,45,46)     NBF (6,9,10)            OK
+
+8       KDUP-T (35,45,46)       NBF (6,9,10)            OK
+
+9       KDUP-N (35,45,46)       NBF (6,9,10)            OK
+
+10      DFSP (CL-2, 3,4)        NBF (6,9,10)            OK
+
+11      FS-CL (1, 2)            NBF (6,9,10)            OK
+
+12      PT-K (Peri, Mid, T)     NBF (6,9,10)            OK
+
+13      PT-K (Peri, Mid, T)     KDUP (Peri, Mid, T, N)  OK
+
+14      PT-K (Peri, Mid, T)     DFSP (CL-2, 3,4)        OK
+
+15      PT-K (Peri, Mid, T)     FS-CL (1, 2)            OK
+
+KDUP-Peri=Keloid Peripheral fibroblasts
+
+KDUP-T=Keloid Transitional fibroblasts
+
+KDUP-Mid= Keloid Middle fibroblasts
+
+KDUP-N=Keloid Normal skin fibroblasts
+
+NF=Normal fibroblast
+
+DFSP=Dermatofibrosarcoma protuberans
+
+
+```{r,samplesheet}
+
+ss <- data.frame(colnames(xx))
+rownames(ss) <- ss[,1]
+
+# specify groups
+ss$n <- as.integer(grepl("^N-",ss[,1]))
+ss$kp <- as.integer(grepl("^KP",ss[,1]))
+ss$km <- as.integer(grepl("^KM",ss[,1]))
+ss$kt <- as.integer(grepl("^KT",ss[,1]))
+ss$kn <- as.integer(grepl("^KN",ss[,1]))
+ss$d <- as.integer(grepl("^D-",ss[,1]))
+
+ss$nbf <- as.integer(grepl("^NBF",ss[,1]))
+ss$kdup_peri <- as.integer(grepl("^KDUP-Peri",ss[,1]))
+ss$kdup_mid <- as.integer(grepl("^KDUP-Mid",ss[,1]))
+ss$kdup_t <- as.integer(grepl("^KDUP-T",ss[,1]))
+ss$kdup_n <- as.integer(grepl("^KDUP-N",ss[,1]))
+ss$dfsp <- as.integer(grepl("^DFSP",ss[,1]))
+ss$fs <- as.integer(grepl("^FS",ss[,1]))
+ss$ptk <- as.integer(grepl("^PT-K",ss[,1]))
+
+ss[,1]=NULL
+
+```
+
+## MDS
+
+MDS is just like PCA.
+The more similar (correlated) the data sets are the closer they will appear on the 
+scatterplot.
+
+```{r,mds,fig.height=8,fig.width=8}
+
+mds <- cmdscale(dist(t(xx)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds , xlab="Coordinate 1", ylab="Coordinate 2", 
+  type = "n" , xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(cmdscale(dist(t(xx))), labels=colnames(xx) )
+ 
+```
+
+We can also visualise the similarities and differences between samples with a heatmap of 
+Pearson correlation values.
+
+```{r,cor,fig.height=8,fig.width=8}
+
+colfunc <- colorRampPalette(c("white", "yellow","orange","red", "darkred"))
+# Dataset level correlation
+heatmap.2(cor(xx),trace="none",margin=c(10,10),scale="none",col=colfunc,
+cexRow=0.8,cexCol=0.8)
+
+```
+
+## Split data into contrasts for separate analysis
+
+```{r,split}
+
+# tissues
+ss1 <- subset(ss,kp==1|n==1)
+ss1$trt <- ss1$kp
+xx1 <- xx[,which(colnames(xx) %in% rownames(ss1))] 
+
+ss2 <- subset(ss,km==1|n==1)
+ss2$trt <- ss2$km
+xx2 <- xx[,which(colnames(xx) %in% rownames(ss2))]
+
+ss3 <- subset(ss,kt==1|n==1)
+ss3$trt <- ss3$kt
+xx3 <- xx[,which(colnames(xx) %in% rownames(ss3))]
+
+ss4 <- subset(ss,kn==1|n==1)
+ss4$trt <- ss4$kn
+xx4 <- xx[,which(colnames(xx) %in% rownames(ss4))]
+
+ss5 <- subset(ss,d==1|n==1)
+ss5$trt <- ss5$d
+xx5 <- xx[,which(colnames(xx) %in% rownames(ss5))]
+
+# cells
+ss6 <- subset(ss,kdup_peri==1|nbf==1)
+ss6$trt <- ss6$kdup_peri
+xx6 <- xx[,which(colnames(xx) %in% rownames(ss6))]
+
+ss7 <- subset(ss,kdup_mid==1|nbf==1)
+ss7$trt <- ss7$kdup_mid
+xx7 <- xx[,which(colnames(xx) %in% rownames(ss7))]
+
+ss8 <- subset(ss,kdup_t==1|nbf==1)
+ss8$trt <- ss8$kdup_t
+xx8 <- xx[,which(colnames(xx) %in% rownames(ss8))]
+
+ss9 <- subset(ss,kdup_n==1|nbf==1)
+ss9$trt <- ss9$kdup_n
+xx9 <- xx[,which(colnames(xx) %in% rownames(ss9))]
+
+ss10 <- subset(ss,dfsp==1|nbf==1)
+ss10$trt <- ss10$dfsp  
+xx10 <- xx[,which(colnames(xx) %in% rownames(ss10))]
+
+ss11 <- subset(ss,fs==1|nbf==1)
+ss11$trt <- ss11$fs
+xx11 <- xx[,which(colnames(xx) %in% rownames(ss11))]
+
+ss12 <- subset(ss,ptk==1|nbf==1)
+ss12$trt <- ss12$ptk
+xx12 <- xx[,which(colnames(xx) %in% rownames(ss12))]
+
+# check whether this one should be "paired"
+ss13 <- subset(ss,ptk==1|kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss13$trt <- ss13$ptk
+xx13 <- xx[,which(colnames(xx) %in% rownames(ss13))]
+
+ss14 <- subset(ss,ptk==1|dfsp==1)
+ss14$trt <- ss14$ptk
+xx14 <- xx[,which(colnames(xx) %in% rownames(ss14))]
+
+ss15 <- subset(ss,ptk==1|fs==1)
+ss15$trt <- ss15$ptk
+xx15 <- xx[,which(colnames(xx) %in% rownames(ss15))]
+
+```
+
+## DE
+
+Here, were using DESeq2 to perform differential expression analysis for the specified 
+contrasts.
+The run_de function does the analysis and generate the charts.
+Here we actually run the analysis.
+
+```{r,de1,fig.height=8,fig.width=8}
+
+ss1
+de1 <- run_de(ss1,xx1)
+head(de1)
+write.table(de1,file="de1.tsv",quote=FALSE,sep="\t")
+
+ss2
+de2 <- run_de(ss2,xx2)
+head(de2)
+write.table(de2,file="de2.tsv",quote=FALSE,sep="\t")
+
+ss3
+de3 <- run_de(ss3,xx3)
+head(de3)
+write.table(de3,file="de3.tsv",quote=FALSE,sep="\t")
+
+ss4
+de4 <- run_de(ss4,xx4)
+head(de4)
+write.table(de4,file="de4.tsv",quote=FALSE,sep="\t")
+
+ss5
+de5 <- run_de(ss5,xx5)
+head(de5)
+write.table(de5,file="de5.tsv",quote=FALSE,sep="\t")
+
+ss6
+de6 <- run_de(ss6,xx6)
+head(de6)
+write.table(de6,file="de6.tsv",quote=FALSE,sep="\t")
+
+ss7
+de7 <- run_de(ss7,xx7)
+head(de7)
+write.table(de7,file="de7.tsv",quote=FALSE,sep="\t")
+
+ss8
+de8 <- run_de(ss8,xx8)
+head(de8)
+write.table(de8,file="de8.tsv",quote=FALSE,sep="\t")
+
+ss9
+de9 <- run_de(ss9,xx9)
+head(de9)
+write.table(de9,file="de9.tsv",quote=FALSE,sep="\t")
+
+ss10
+de10 <- run_de(ss10,xx10)
+head(de10)
+write.table(de10,file="de10.tsv",quote=FALSE,sep="\t")
+
+ss11
+de11 <- run_de(ss11,xx11)
+head(de1)
+write.table(de11,file="de11.tsv",quote=FALSE,sep="\t")
+
+ss12
+de12 <- run_de(ss12,xx12)
+head(de12)
+write.table(de12,file="de12.tsv",quote=FALSE,sep="\t")
+
+ss13
+de13 <- run_de(ss13,xx13)
+head(de13)
+write.table(de13,file="de13.tsv",quote=FALSE,sep="\t")
+
+ss14
+de14 <- run_de(ss14,xx14)
+head(de14)
+write.table(de14,file="de14.tsv",quote=FALSE,sep="\t")
+
+ss15
+de15 <- run_de(ss15,xx15)
+head(de15)
+write.table(de15,file="de15.tsv",quote=FALSE,sep="\t")
+
+```
+
+## Pathway analysis
+
+Will do MSigDB and Reactome enrichment in mitch.
+Reactome gene sets were downloaded 19 Oct 2020.
+I used MSigDB version 7.2.
+
+
+```{r,mitch,fig.height=8,fig.width=8}
+
+#download.file("https://reactome.org/download/current/ReactomePathways.gmt.zip", destfile="ReactomePathways.gmt.zip")
+#unzip("ReactomePathways.gmt.zip")
+reactome <- gmt_import("ReactomePathways.gmt")
+msigdb <- gmt_import("msigdb.v7.2.symbols.gmt")
+
+gt <- as.data.frame(rownames(xx))
+
+gt$gn <- sapply(strsplit(gt[,1]," "),"[[",2)
+
+mitch_barplot <- function(res){
+  sig <- head(subset(res$enrichment_result,p.adjustANOVA<0.05),30)
+  sig <- sig[order(sig$s.dist),]
+  par(mar=c(3,25,1,1)); barplot(sig$s.dist,horiz=TRUE,las=2,cex.names = 0.6,cex.axis = 0.6,
+    names.arg=sig$set,main="Enrichment score") ;grid()
+}
+
+m1 <- mitch_import(x=as.data.frame(de1),DEtype="deseq2",geneTable=gt)
+res1 <- mitch_calc(x=m1,genesets=reactome,priority="effect")
+head(res1$enrichment_result,20)
+mitch_barplot(res1)
+unlink("de1_mitch_reactome.html")
+mitch_report(res1,outfile="de1_mitch_reactome.html")
+res1m <- mitch_calc(x=m1,genesets=msigdb,priority="effect",cores=12)
+head(res1m$enrichment_result,20)
+mitch_barplot(res1m)
+unlink("de1_mitch_msigdb.html")
+mitch_report(res1m,outfile="de1_mitch_msigdb.html")
+
+m2 <- mitch_import(x=as.data.frame(de2),DEtype="deseq2",geneTable=gt)
+res2 <- mitch_calc(x=m2,genesets=reactome,priority="effect")
+head(res2$enrichment_result,20)
+mitch_barplot(res2)
+unlink("de2_mitch_reactome.html")
+mitch_report(res2,outfile="de2_mitch_reactome.html")
+res2m <- mitch_calc(x=m2,genesets=msigdb,priority="effect",cores=12)
+head(res2m$enrichment_result,20)
+mitch_barplot(res2m)
+unlink("de2_mitch_msigdb.html")
+mitch_report(res2m,outfile="de2_mitch_msigdb.html")
+
+m3 <- mitch_import(x=as.data.frame(de3),DEtype="deseq2",geneTable=gt)
+res3 <- mitch_calc(x=m3,genesets=reactome,priority="effect")
+head(res3$enrichment_result,20)
+mitch_barplot(res3)
+unlink("de3_mitch_reactome.html")
+mitch_report(res3,outfile="de3_mitch_reactome.html")
+res3m <- mitch_calc(x=m3,genesets=msigdb,priority="effect",cores=12)
+head(res3m$enrichment_result,20)
+mitch_barplot(res3m)
+unlink("de3_mitch_msigdb.html")
+mitch_report(res3m,outfile="de3_mitch_msigdb.html")
+
+m4 <- mitch_import(x=as.data.frame(de4),DEtype="deseq2",geneTable=gt)
+res4 <- mitch_calc(x=m4,genesets=reactome,priority="effect")
+head(res4$enrichment_result,20)
+mitch_barplot(res4)
+unlink("de4_mitch_reactome.html")
+mitch_report(res4,outfile="de4_mitch_reactome.html")
+res4m <- mitch_calc(x=m4,genesets=msigdb,priority="effect",cores=12)
+head(res4m$enrichment_result,20)
+mitch_barplot(res4m)
+unlink("de4_mitch_msigdb.html")
+mitch_report(res4m,outfile="de4_mitch_msigdb.html")
+
+m5 <- mitch_import(x=as.data.frame(de5),DEtype="deseq2",geneTable=gt)
+res5 <- mitch_calc(x=m5,genesets=reactome,priority="effect")
+head(res5$enrichment_result,20)
+mitch_barplot(res5)
+unlink("de5_mitch_reactome.html")
+mitch_report(res5,outfile="de5_mitch_reactome.html")
+res5m <- mitch_calc(x=m5,genesets=msigdb,priority="effect",cores=12)
+head(res5m$enrichment_result,20)
+mitch_barplot(res5m)
+unlink("de5_mitch_msigdb.html")
+mitch_report(res5m,outfile="de5_mitch_msigdb.html")
+
+m6 <- mitch_import(x=as.data.frame(de6),DEtype="deseq2",geneTable=gt)
+res6 <- mitch_calc(x=m6,genesets=reactome,priority="effect")
+head(res6$enrichment_result,20)
+mitch_barplot(res6)
+unlink("de6_mitch_reactome.html")
+mitch_report(res6,outfile="de6_mitch_reactome.html")
+res6m <- mitch_calc(x=m6,genesets=msigdb,priority="effect",cores=12)
+head(res6m$enrichment_result,20)
+mitch_barplot(res6m)
+unlink("de6_mitch_msigdb.html")
+mitch_report(res6m,outfile="de6_mitch_msigdb.html")
+
+m7 <- mitch_import(x=as.data.frame(de7),DEtype="deseq2",geneTable=gt)
+res7 <- mitch_calc(x=m7,genesets=reactome,priority="effect")
+head(res7$enrichment_result,20)
+mitch_barplot(res7)
+unlink("de7_mitch_reactome.html")
+mitch_report(res7,outfile="de7_mitch_reactome.html")
+res7m <- mitch_calc(x=m7,genesets=msigdb,priority="effect",cores=12)
+head(res7m$enrichment_result,20)
+mitch_barplot(res7m)
+unlink("de7_mitch_msigdb.html")
+mitch_report(res7m,outfile="de7_mitch_msigdb.html")
+
+m8 <- mitch_import(x=as.data.frame(de8),DEtype="deseq2",geneTable=gt)
+res8 <- mitch_calc(x=m8,genesets=reactome,priority="effect")
+head(res8$enrichment_result,20)
+mitch_barplot(res8)
+unlink("de8_mitch_reactome.html")
+mitch_report(res8,outfile="de8_mitch_reactome.html")
+res8m <- mitch_calc(x=m8,genesets=msigdb,priority="effect",cores=12)
+head(res8m$enrichment_result,20)
+mitch_barplot(res8m)
+unlink("de8_mitch_msigdb.html")
+mitch_report(res8m,outfile="de8_mitch_msigdb.html")
+
+m9 <- mitch_import(x=as.data.frame(de9),DEtype="deseq2",geneTable=gt)
+res9 <- mitch_calc(x=m9,genesets=reactome,priority="effect")
+head(res9$enrichment_result,20)
+mitch_barplot(res9)
+unlink("de9_mitch_reactome.html")
+mitch_report(res9,outfile="de9_mitch_reactome.html")
+res9m <- mitch_calc(x=m9,genesets=msigdb,priority="effect",cores=12)
+head(res9m$enrichment_result,20)
+mitch_barplot(res9m)
+unlink("de9_mitch_msigdb.html")
+mitch_report(res9m,outfile="de9_mitch_msigdb.html")
+
+m10 <- mitch_import(x=as.data.frame(de10),DEtype="deseq2",geneTable=gt)
+res10 <- mitch_calc(x=m10,genesets=reactome,priority="effect")
+head(res10$enrichment_result,20)
+mitch_barplot(res10)
+unlink("de10_mitch_reactome.html")
+mitch_report(res10,outfile="de10_mitch_reactome.html")
+res10m <- mitch_calc(x=m10,genesets=msigdb,priority="effect",cores=12)
+head(res10m$enrichment_result,20)
+mitch_barplot(res10m)
+unlink("de10_mitch_msigdb.html")
+mitch_report(res10m,outfile="de10_mitch_msigdb.html")
+
+m11 <- mitch_import(x=as.data.frame(de11),DEtype="deseq2",geneTable=gt)
+res11 <- mitch_calc(x=m11,genesets=reactome,priority="effect")
+head(res11$enrichment_result,20)
+mitch_barplot(res11)
+unlink("de11_mitch_reactome.html")
+mitch_report(res11,outfile="de11_mitch_reactome.html")
+res11m <- mitch_calc(x=m11,genesets=msigdb,priority="effect",cores=12)
+head(res11m$enrichment_result,20)
+mitch_barplot(res11m)
+unlink("de11_mitch_msigdb.html")
+mitch_report(res11m,outfile="de11_mitch_msigdb.html")
+
+m12 <- mitch_import(x=as.data.frame(de12),DEtype="deseq2",geneTable=gt)
+res12 <- mitch_calc(x=m12,genesets=reactome,priority="effect")
+head(res12$enrichment_result,20)
+mitch_barplot(res12)
+unlink("de12_mitch_reactome.html")
+mitch_report(res12,outfile="de12_mitch_reactome.html")
+res12m <- mitch_calc(x=m12,genesets=msigdb,priority="effect",cores=12)
+head(res12m$enrichment_result,20)
+mitch_barplot(res12m)
+unlink("de12_mitch_msigdb.html")
+mitch_report(res12m,outfile="de12_mitch_msigdb.html")
+
+m13 <- mitch_import(x=as.data.frame(de13),DEtype="deseq2",geneTable=gt)
+res13 <- mitch_calc(x=m13,genesets=reactome,priority="effect")
+head(res13$enrichment_result,20)
+mitch_barplot(res13)
+unlink("de13_mitch_reactome.html")
+mitch_report(res13,outfile="de13_mitch_reactome.html")
+res13m <- mitch_calc(x=m13,genesets=msigdb,priority="effect",cores=12)
+head(res13m$enrichment_result,20)
+mitch_barplot(res13m)
+unlink("de13_mitch_msigdb.html")
+mitch_report(res13m,outfile="de13_mitch_msigdb.html")
+
+m14 <- mitch_import(x=as.data.frame(de14),DEtype="deseq2",geneTable=gt)
+res14 <- mitch_calc(x=m14,genesets=reactome,priority="effect")
+head(res14$enrichment_result,20)
+mitch_barplot(res14)
+unlink("de14_mitch_reactome.html")
+mitch_report(res14,outfile="de14_mitch_reactome.html")
+res14m <- mitch_calc(x=m14,genesets=msigdb,priority="effect",cores=12)
+head(res14m$enrichment_result,20)
+mitch_barplot(res14m)
+unlink("de14_mitch_msigdb.html")
+mitch_report(res14m,outfile="de14_mitch_msigdb.html")
+
+m15 <- mitch_import(x=as.data.frame(de15),DEtype="deseq2",geneTable=gt)
+res15 <- mitch_calc(x=m15,genesets=reactome,priority="effect")
+head(res15$enrichment_result,20)
+mitch_barplot(res15)
+unlink("de15_mitch_reactome.html")
+mitch_report(res15,outfile="de15_mitch_reactome.html")
+res15m <- mitch_calc(x=m15,genesets=msigdb,priority="effect",cores=12)
+head(res15m$enrichment_result,20)
+mitch_barplot(res15m)
+unlink("de15_mitch_msigdb.html")
+mitch_report(res15m,outfile="de15_mitch_msigdb.html")
+
+```
+
+## Tissues multi-enrichment
+
+```{r,mitch_tissues}
+tissue_l <- list("de1"=de1,"de2"=de2,"de3"=de3,"de4"=de4,"de5"=de5)
+tissue <- mitch_import(x=tissue_l,DEtype="deseq2",geneTable=gt)
+tissue_r <- mitch_calc(x=tissue,genesets=reactome,priority="effect")
+head(tissue_r$enrichment_result,20)
+tissue_m <- mitch_calc(x=tissue,genesets=msigdb,priority="effect",cores=12)
+head(tissue_m$enrichment_result,20)
+
+unlink("tissue_mitch_reactome.html")
+mitch_report(tissue_r,outfile="tissue_mitch_reactome.html")
+unlink("tissue_mitch_msigdb.html")
+mitch_report(tissue_m,outfile="tissue_mitch_msigdb.html")
+
+```
+
+## Cells multi-enrichment
+
+```{r,mitch_cells}
+cells_l <- list("de6"=de6,"de7"=de7,"de8"=de8,"de9"=de9,"de10"=de10,
+  "de11"=de11,"de12"=de12,"de13"=de13,"de14"=de14,"de15"=de15)
+cells <- mitch_import(x=cells_l,DEtype="deseq2",geneTable=gt)
+cells_r <- mitch_calc(x=cells,genesets=reactome,priority="effect")
+head(cells_r$enrichment_result,20)
+cells_m <- mitch_calc(x=cells,genesets=msigdb,priority="effect",cores=12)
+head(cells_m$enrichment_result,20)
+
+unlink("cells_mitch_reactome.html")
+mitch_report(cells_r,outfile="cells_mitch_reactome.html")
+unlink("cells_mitch_msigdb.html")
+mitch_report(cells_m,outfile="cells_mitch_msigdb.html")
+
+```
+
+## Session information
+
+So you know what version of R and packages was used.
+
+```{r,session}
+sessionInfo()
+```
+
+## References
+
+Bray NL, Pimentel H, Melsted P, Pachter L. Near-optimal probabilistic RNA-seq quantification [published correction appears in Nat Biotechnol. 2016 Aug 9;34(8):888]. Nat Biotechnol. 2016;34(5):525-527. doi:10.1038/nbt.3519
+
+Jiang H, Lei R, Ding SW, Zhu S. Skewer: a fast and accurate adapter trimmer for next-generation sequencing paired-end reads. BMC Bioinformatics. 2014;15:182. Published 2014 Jun 12. doi:10.1186/1471-2105-15-182
+
+Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biol. 2014;15(12):550. doi:10.1186/s13059-014-0550-8
+
+Jassal B, Matthews L, Viteri G, Gong C, Lorente P, Fabregat A, Sidiropoulos K, Cook J, Gillespie M, Haw R, Loney F, May B, Milacic M, Rothfels K, Sevilla C, Shamovsky V, Shorser S, Varusai T, Weiser J, Wu G, Stein L, Hermjakob H, D'Eustachio P. The reactome pathway knowledgebase. Nucleic Acids Res. 2020 Jan 8;48(D1):D498-D503. doi: 10.1093/nar/gkz1031. PMID: 31691815; PMCID: PMC7145712.
+
+Liberzon A, Birger C, Thorvaldsdóttir H, Ghandi M, Mesirov JP, Tamayo P. The Molecular Signatures Database (MSigDB) hallmark gene set collection. Cell Syst. 2015 Dec 23;1(6):417-425. doi: 10.1016/j.cels.2015.12.004. PMID: 26771021; PMCID: PMC4707969.
+
+Kaspi A, Ziemann M. mitch: multi-contrast pathway enrichment for multi-omics and single-cell profiling data. BMC Genomics. 2020;21(1):447. Published 2020 Jun 29. doi:10.1186/s12864-020-06856-9
+
