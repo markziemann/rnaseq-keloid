@@ -1,0 +1,151 @@
+---
+title: "Gene expression analysis of keloid tissue and cultured fibroblasts"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+theme: cosmo
+---
+
+Source codes: https://github.com/markziemann/rnaseq-keloid
+
+## Background
+
+Here we are looking at the molecular hallmarks of Keloids in tissue samples and fibroblasts.
+
+Reads underwent quality trimming using Skewer version 0.2.2 (Jiang et al, 2014).
+I mapped the reads to the Gencode transcriptome version 35 using Kallisto version 0.46.1 (Bray et al, 2016).
+Expression counts were loaded into R and then DE analysis was performed with DESeq2 (Love et al, 2014).
+Enrichment analysis was performed using Reactome and MSigDB genesets (Jassal et al, 2020; Liberzon et al, 2015) with the Mitch package (Kaspi & Ziemann 2020).
+
+```{r,pkg}
+
+suppressPackageStartupMessages({
+    library("reshape2")
+    library("gplots")
+    library("DESeq2")
+    library("mitch")
+})
+
+```
+
+Here are some functions.
+
+```{r,defunc}
+
+run_de <- function(ss,xx){
+
+y <- round(xx)
+
+# MDS
+mds <- cmdscale(dist(t(y)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds , xlab="Coordinate 1", ylab="Coordinate 2",
+  type = "n" , xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(y) )
+
+# DE
+dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ trt)
+dds <- DESeq(dds)
+de <- DESeq2::results(dds)
+de <- de[order(de$pvalue),]
+up <- rownames(subset(de, log2FoldChange>0 & padj<0.05 ))
+dn <- rownames(subset(de, log2FoldChange<0 & padj<0.05 ))
+str(up)
+str(dn)
+
+# MA plot
+sig <-subset(de, padj < 0.05 )
+GENESUP <- length(up)
+GENESDN <- length(dn)
+SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down")
+ns <-subset(de, padj > 0.05 )
+plot(log2(de$baseMean),de$log2FoldChange,
+     xlab="log2 basemean", ylab="log2 foldchange",
+     pch=19, cex=0.5, col="dark gray",
+     main="smear plot")
+points(log2(sig$baseMean),sig$log2FoldChange,
+       pch=19, cex=0.5, col="red")
+mtext(SUBHEADER)
+
+# heatmap
+yn <- y/colSums(y)*1000000
+yf <- yn[which(rownames(yn) %in% rownames(de)[1:50]),]
+mycols <- gsub("0","yellow",ss$trt)
+mycols <- gsub("1","orange",mycols)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(  as.matrix(yf), col=colfunc(25),scale="row",
+    ColSideColors =mycols ,trace="none",
+    margin = c(10,10), cexRow=0.6, cexCol=0.8 , main="Top 50 genes by p-val")
+mtext("yellow=ctrl, orange=trt")
+
+return(de)
+}
+
+```
+
+
+## Load data
+```{r,load}
+load("stats.Rdata")
+```
+
+## Tissues multi-enrichment
+
+```{r,mitch_tissues}
+tissue_l <- list("de1"=de1,"de2"=de2,"de3"=de3,"de4"=de4,"de5"=de5)
+tissue <- mitch_import(x=tissue_l,DEtype="deseq2",geneTable=gt)
+tissue_r <- mitch_calc(x=tissue,genesets=reactome,priority="effect",cores=8)
+head(tissue_r$enrichment_result,20)
+tissue_m <- mitch_calc(x=tissue,genesets=msigdb,priority="effect",cores=8)
+head(tissue_m$enrichment_result,20)
+
+#unlink("tissue_mitch_reactome.html")
+#mitch_report(tissue_r,outfile="tissue_mitch_reactome.html")
+#unlink("tissue_mitch_msigdb.html")
+#mitch_report(tissue_m,outfile="tissue_mitch_msigdb.html")
+
+```
+
+## Cells multi-enrichment
+
+```{r,mitch_cells}
+cells_l <- list("de6"=de6,"de7"=de7,"de8"=de8,"de9"=de9,"de10"=de10,
+  "de11"=de11,"de12"=de12,"de13"=de13,"de14"=de14,"de15"=de15)
+cells <- mitch_import(x=cells_l,DEtype="deseq2",geneTable=gt)
+cells_r <- mitch_calc(x=cells,genesets=reactome,priority="effect",cores=8)
+head(cells_r$enrichment_result,20)
+cells_m <- mitch_calc(x=cells,genesets=msigdb,priority="effect",cores=8)
+head(cells_m$enrichment_result,20)
+
+#unlink("cells_mitch_reactome.html")
+#mitch_report(cells_r,outfile="cells_mitch_reactome.html")
+#unlink("cells_mitch_msigdb.html")
+#mitch_report(cells_m,outfile="cells_mitch_msigdb.html")
+
+```
+
+## Session information
+
+So you know what version of R and packages was used.
+
+```{r,session}
+sessionInfo()
+```
+
+## References
+
+Bray NL, Pimentel H, Melsted P, Pachter L. Near-optimal probabilistic RNA-seq quantification [published correction appears in Nat Biotechnol. 2016 Aug 9;34(8):888]. Nat Biotechnol. 2016;34(5):525-527. doi:10.1038/nbt.3519
+
+Jiang H, Lei R, Ding SW, Zhu S. Skewer: a fast and accurate adapter trimmer for next-generation sequencing paired-end reads. BMC Bioinformatics. 2014;15:182. Published 2014 Jun 12. doi:10.1186/1471-2105-15-182
+
+Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biol. 2014;15(12):550. doi:10.1186/s13059-014-0550-8
+
+Jassal B, Matthews L, Viteri G, Gong C, Lorente P, Fabregat A, Sidiropoulos K, Cook J, Gillespie M, Haw R, Loney F, May B, Milacic M, Rothfels K, Sevilla C, Shamovsky V, Shorser S, Varusai T, Weiser J, Wu G, Stein L, Hermjakob H, D'Eustachio P. The reactome pathway knowledgebase. Nucleic Acids Res. 2020 Jan 8;48(D1):D498-D503. doi: 10.1093/nar/gkz1031. PMID: 31691815; PMCID: PMC7145712.
+
+Liberzon A, Birger C, Thorvaldsdóttir H, Ghandi M, Mesirov JP, Tamayo P. The Molecular Signatures Database (MSigDB) hallmark gene set collection. Cell Syst. 2015 Dec 23;1(6):417-425. doi: 10.1016/j.cels.2015.12.004. PMID: 26771021; PMCID: PMC4707969.
+
+Kaspi A, Ziemann M. mitch: multi-contrast pathway enrichment for multi-omics and single-cell profiling data. BMC Genomics. 2020;21(1):447. Published 2020 Jun 29. doi:10.1186/s12864-020-06856-9
+

@@ -8,7 +8,7 @@ output:
 theme: cosmo
 ---
 
-Source codes: TODO
+Source codes: https://github.com/markziemann/rnaseq-keloid
 
 ## Background
 
@@ -596,40 +596,7 @@ mitch_barplot(res15m)
 unlink("de15_mitch_msigdb.html")
 mitch_report(res15m,outfile="de15_mitch_msigdb.html")
 
-```
-
-## Tissues multi-enrichment
-
-```{r,mitch_tissues}
-tissue_l <- list("de1"=de1,"de2"=de2,"de3"=de3,"de4"=de4,"de5"=de5)
-tissue <- mitch_import(x=tissue_l,DEtype="deseq2",geneTable=gt)
-tissue_r <- mitch_calc(x=tissue,genesets=reactome,priority="effect")
-head(tissue_r$enrichment_result,20)
-tissue_m <- mitch_calc(x=tissue,genesets=msigdb,priority="effect",cores=12)
-head(tissue_m$enrichment_result,20)
-
-unlink("tissue_mitch_reactome.html")
-mitch_report(tissue_r,outfile="tissue_mitch_reactome.html")
-unlink("tissue_mitch_msigdb.html")
-mitch_report(tissue_m,outfile="tissue_mitch_msigdb.html")
-
-```
-
-## Cells multi-enrichment
-
-```{r,mitch_cells}
-cells_l <- list("de6"=de6,"de7"=de7,"de8"=de8,"de9"=de9,"de10"=de10,
-  "de11"=de11,"de12"=de12,"de13"=de13,"de14"=de14,"de15"=de15)
-cells <- mitch_import(x=cells_l,DEtype="deseq2",geneTable=gt)
-cells_r <- mitch_calc(x=cells,genesets=reactome,priority="effect")
-head(cells_r$enrichment_result,20)
-cells_m <- mitch_calc(x=cells,genesets=msigdb,priority="effect",cores=12)
-head(cells_m$enrichment_result,20)
-
-unlink("cells_mitch_reactome.html")
-mitch_report(cells_r,outfile="cells_mitch_reactome.html")
-unlink("cells_mitch_msigdb.html")
-mitch_report(cells_m,outfile="cells_mitch_msigdb.html")
+save.image("stats.Rdata")
 
 ```
 
