@@ -104,6 +104,8 @@ rownames(xx) <- xx$gene
 xx$gene = NULL
 head(xx)
 
+write.table(xx,file="genecounts.tsv",sep="\t",quote=FALSE)
+
 ```
 
 ```{r,numreads,fig.width=7,fig.height=7}
@@ -180,6 +182,31 @@ NF=Normal fibroblast
 
 DFSP=Dermatofibrosarcoma protuberans
 
+## Update 3/Nov/2020
+
+There are some additional contrasts requested (tissue)
+
+16	KP (35,45,46), KM (35,45,46) ,KT (35,45,46), KN (35,45,46)	N (6,9,10)
+
+17	KP (35,45,46), KM (35,45,46) ,KT (35,45,46)	KN (35,45,46)
+
+18      KP (35,45,46), KM (35,45,46) ,KT (35,45,46), KN (35,45,46)	D (1,3,4)
+
+And from cells
+
+19	KDUP (Peri, Mid, T, N)	NBF (6,9,10)
+
+20	KDUP (Peri, Mid, T)	KDUP-N (35,45,46)
+
+21	KDUP (Peri, Mid, T, N)	DFSP (CL-2, 3,4)
+
+22	KDUP (Peri, Mid, T, N)	FS-CL (1, 2)
+
+23	KDUP (Peri, Mid, T, N)	PT-K (Peri, Mid, T)
+
+Comparre tissues and cells
+
+24	KP (35,45,46), KM (35,45,46) ,KT (35,45,46), KN (35,45,46)	KDUP (Peri, Mid, T, N)
 
 ```{r,samplesheet}
 
@@ -303,6 +330,46 @@ ss15 <- subset(ss,ptk==1|fs==1)
 ss15$trt <- ss15$ptk
 xx15 <- xx[,which(colnames(xx) %in% rownames(ss15))]
 
+# set 2 tissue
+ss16 <- subset(ss,n==1|kp==1|km==1|kt==1|kn==1)
+ss16$trt <- grepl("K",rownames(ss16))*1
+xx16 <- xx[,which(colnames(xx) %in% rownames(ss16))]
+
+ss17 <- subset(ss,kp==1|km==1|kt==1|kn==1)
+ss17$trt <- 1+(grepl("KN",rownames(ss17))*-1)
+xx17 <- xx[,which(colnames(xx) %in% rownames(ss17))]
+
+ss18 <- subset(ss,d==1|kp==1|km==1|kt==1|kn==1)
+ss18$trt <- grepl("K",rownames(ss18))*1
+xx18 <- xx[,which(colnames(xx) %in% rownames(ss18))]
+
+# And from cells
+ss19 <- subset(ss,nbf==1|kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss19$trt <- grepl("K",rownames(ss19))*1
+xx19 <- xx[,which(colnames(xx) %in% rownames(ss19))]
+
+ss20 <- subset(ss,kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss20$trt <- 1+(grepl("KDUP-N",rownames(ss20))*-1)
+xx20 <- xx[,which(colnames(xx) %in% rownames(ss20))]
+
+ss21 <- subset(ss,dfsp==1|kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss21$trt <- grepl("K",rownames(ss21))*1
+xx21 <- xx[,which(colnames(xx) %in% rownames(ss21))]
+
+ss22 <- subset(ss,fs==1|kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss22$trt <- grepl("K",rownames(ss22))*1
+xx22 <- xx[,which(colnames(xx) %in% rownames(ss22))]
+
+# this is the opposite of de13
+ss23 <- subset(ss,ptk==1|kdup_peri==1|kdup_mid==1|kdup_t==1|kdup_n==1)
+ss23$trt <- grepl("KDUP",rownames(ss23))*1
+xx23 <- xx[,which(colnames(xx) %in% rownames(ss23))]
+
+# Compare tissues and cells
+ss24 <- ss[grep("^K",rownames(ss)),]
+ss24$trt <- 1+(grepl("KDUP",rownames(ss24))*-1)
+xx24 <- xx[,which(colnames(xx) %in% rownames(ss24))]
+
 ```
 
 ## DE
@@ -388,6 +455,51 @@ ss15
 de15 <- run_de(ss15,xx15)
 head(de15)
 write.table(de15,file="de15.tsv",quote=FALSE,sep="\t")
+
+ss16
+de16 <- run_de(ss16,xx16)
+head(de1)
+write.table(de16,file="de16.tsv",quote=FALSE,sep="\t")
+
+ss17
+de17 <- run_de(ss17,xx17)
+head(de17)
+write.table(de17,file="de17.tsv",quote=FALSE,sep="\t")
+
+ss18
+de18 <- run_de(ss18,xx18)
+head(de18)
+write.table(de18,file="de18.tsv",quote=FALSE,sep="\t")
+
+ss19
+de19 <- run_de(ss19,xx19)
+head(de19)
+write.table(de19,file="de19.tsv",quote=FALSE,sep="\t")
+
+ss20
+de20 <- run_de(ss20,xx20)
+head(de20)
+write.table(de20,file="de20.tsv",quote=FALSE,sep="\t")
+
+ss21
+de21 <- run_de(ss21,xx21)
+head(de21)
+write.table(de21,file="de21.tsv",quote=FALSE,sep="\t")
+
+ss22
+de22 <- run_de(ss22,xx22)
+head(de22)
+write.table(de22,file="de22.tsv",quote=FALSE,sep="\t")
+
+ss23
+de23 <- run_de(ss23,xx23)
+head(de23)
+write.table(de20,file="de20.tsv",quote=FALSE,sep="\t")
+
+ss24
+de24 <- run_de(ss24,xx24)
+head(de24)
+write.table(de24,file="de24.tsv",quote=FALSE,sep="\t")
 
 ```
 
@@ -596,6 +708,114 @@ mitch_barplot(res15m)
 unlink("de15_mitch_msigdb.html")
 mitch_report(res15m,outfile="de15_mitch_msigdb.html")
 
+m16 <- mitch_import(x=as.data.frame(de16),DEtype="deseq2",geneTable=gt)
+res16 <- mitch_calc(x=m16,genesets=reactome,priority="effect")
+head(res16$enrichment_result,20)
+mitch_barplot(res16)
+unlink("de16_mitch_reactome.html")
+mitch_report(res16,outfile="de16_mitch_reactome.html")
+res16m <- mitch_calc(x=m16,genesets=msigdb,priority="effect",cores=12)
+head(res16m$enrichment_result,20)
+mitch_barplot(res16m)
+unlink("de16_mitch_msigdb.html")
+mitch_report(res16m,outfile="de16_mitch_msigdb.html")
+
+m17 <- mitch_import(x=as.data.frame(de17),DEtype="deseq2",geneTable=gt)
+res17 <- mitch_calc(x=m17,genesets=reactome,priority="effect")
+head(res17$enrichment_result,20)
+mitch_barplot(res17)
+unlink("de17_mitch_reactome.html")
+mitch_report(res17,outfile="de17_mitch_reactome.html")
+res17m <- mitch_calc(x=m17,genesets=msigdb,priority="effect",cores=12)
+head(res17m$enrichment_result,20)
+mitch_barplot(res17m)
+unlink("de17_mitch_msigdb.html")
+mitch_report(res17m,outfile="de17_mitch_msigdb.html")
+
+m18 <- mitch_import(x=as.data.frame(de18),DEtype="deseq2",geneTable=gt)
+res18 <- mitch_calc(x=m18,genesets=reactome,priority="effect")
+head(res18$enrichment_result,20)
+mitch_barplot(res18)
+unlink("de18_mitch_reactome.html")
+mitch_report(res18,outfile="de18_mitch_reactome.html")
+res18m <- mitch_calc(x=m18,genesets=msigdb,priority="effect",cores=12)
+head(res18m$enrichment_result,20)
+mitch_barplot(res18m)
+unlink("de18_mitch_msigdb.html")
+mitch_report(res18m,outfile="de18_mitch_msigdb.html")
+
+m19 <- mitch_import(x=as.data.frame(de19),DEtype="deseq2",geneTable=gt)
+res19 <- mitch_calc(x=m19,genesets=reactome,priority="effect")
+head(res19$enrichment_result,20)
+mitch_barplot(res19)
+unlink("de19_mitch_reactome.html")
+mitch_report(res19,outfile="de19_mitch_reactome.html")
+res19m <- mitch_calc(x=m19,genesets=msigdb,priority="effect",cores=12)
+head(res19m$enrichment_result,20)
+mitch_barplot(res19m)
+unlink("de19_mitch_msigdb.html")
+mitch_report(res19m,outfile="de19_mitch_msigdb.html")
+
+m20 <- mitch_import(x=as.data.frame(de20),DEtype="deseq2",geneTable=gt)
+res20 <- mitch_calc(x=m20,genesets=reactome,priority="effect")
+head(res20$enrichment_result,20)
+mitch_barplot(res20)
+unlink("de20_mitch_reactome.html")
+mitch_report(res20,outfile="de20_mitch_reactome.html")
+res20m <- mitch_calc(x=m20,genesets=msigdb,priority="effect",cores=12)
+head(res20m$enrichment_result,20)
+mitch_barplot(res20m)
+unlink("de20_mitch_msigdb.html")
+mitch_report(res20m,outfile="de20_mitch_msigdb.html")
+
+m21 <- mitch_import(x=as.data.frame(de21),DEtype="deseq2",geneTable=gt)
+res21 <- mitch_calc(x=m21,genesets=reactome,priority="effect")
+head(res21$enrichment_result,20)
+mitch_barplot(res21)
+unlink("de21_mitch_reactome.html")
+mitch_report(res21,outfile="de21_mitch_reactome.html")
+res21m <- mitch_calc(x=m21,genesets=msigdb,priority="effect",cores=12)
+head(res21m$enrichment_result,20)
+mitch_barplot(res21m)
+unlink("de21_mitch_msigdb.html")
+mitch_report(res21m,outfile="de21_mitch_msigdb.html")
+
+m22 <- mitch_import(x=as.data.frame(de22),DEtype="deseq2",geneTable=gt)
+res22 <- mitch_calc(x=m22,genesets=reactome,priority="effect")
+head(res22$enrichment_result,20)
+mitch_barplot(res22)
+unlink("de22_mitch_reactome.html")
+mitch_report(res22,outfile="de22_mitch_reactome.html")
+res22m <- mitch_calc(x=m22,genesets=msigdb,priority="effect",cores=12)
+head(res22m$enrichment_result,20)
+mitch_barplot(res22m)
+unlink("d220_mitch_msigdb.html")
+mitch_report(res22m,outfile="de22_mitch_msigdb.html")
+
+m23 <- mitch_import(x=as.data.frame(de23),DEtype="deseq2",geneTable=gt)
+res23 <- mitch_calc(x=m23,genesets=reactome,priority="effect")
+head(res23$enrichment_result,20)
+mitch_barplot(res23)
+unlink("de23_mitch_reactome.html")
+mitch_report(res23,outfile="de23_mitch_reactome.html")
+res23m <- mitch_calc(x=m23,genesets=msigdb,priority="effect",cores=12)
+head(res23m$enrichment_result,20)
+mitch_barplot(res23m)
+unlink("de23_mitch_msigdb.html")
+mitch_report(res23m,outfile="de23_mitch_msigdb.html")
+
+m24 <- mitch_import(x=as.data.frame(de24),DEtype="deseq2",geneTable=gt)
+res24 <- mitch_calc(x=m24,genesets=reactome,priority="effect")
+head(res24$enrichment_result,20)
+mitch_barplot(res24)
+unlink("de24_mitch_reactome.html")
+mitch_report(res24,outfile="de24_mitch_reactome.html")
+res24m <- mitch_calc(x=m24,genesets=msigdb,priority="effect",cores=12)
+head(res24m$enrichment_result,20)
+mitch_barplot(res24m)
+unlink("de24_mitch_msigdb.html")
+mitch_report(res24m,outfile="de24_mitch_msigdb.html")
+
 save.image("stats.Rdata")
 
 ```
@@ -605,7 +825,9 @@ save.image("stats.Rdata")
 So you know what version of R and packages was used.
 
 ```{r,session}
+
 sessionInfo()
+
 ```
 
 ## References
