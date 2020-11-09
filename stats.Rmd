@@ -494,7 +494,7 @@ write.table(de22,file="de22.tsv",quote=FALSE,sep="\t")
 ss23
 de23 <- run_de(ss23,xx23)
 head(de23)
-write.table(de20,file="de20.tsv",quote=FALSE,sep="\t")
+write.table(de23,file="de23.tsv",quote=FALSE,sep="\t")
 
 ss24
 de24 <- run_de(ss24,xx24)
