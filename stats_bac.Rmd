@@ -110,6 +110,10 @@ xx <- rbind(xx,bac)
 dim(xx)
 head(xx)
 write.table(xx,file="genecounts_bac2.tsv",sep="\t",quote=FALSE)
+xxx <- xx/colSums(xx)*1000000
+write.table(xxx,file="genecounts_bac2_rpm.tsv",sep="\t",quote=FALSE)
+
+
 
 ```
 
@@ -829,7 +833,7 @@ mitch_report(res22,outfile="de22_mitch_reactome.html")
 res22m <- mitch_calc(x=m22,genesets=msigdb,priority="effect",cores=16)
 head(res22m$enrichment_result,20)
 mitch_barplot(res22m)
-unlink("d22_mitch_msigdb.html")
+unlink("de22_mitch_msigdb.html")
 mitch_report(res22m,outfile="de22_mitch_msigdb.html")
 
 m23 <- mitch_import(x=as.data.frame(de23),DEtype="deseq2",geneTable=gt)
